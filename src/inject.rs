@@ -1,5 +1,9 @@
 //! Shared DLL injection primitives used by injector and watcher binaries.
 
+#[path = "common.rs"]
+pub mod common;
+use common::*;
+
 use std::ffi::c_void;
 use std::mem;
 
@@ -199,9 +203,7 @@ pub struct BrokenDevice {
     pub failed_string_indices: Vec<u8>,
 }
 
-const IOCTL_USB_GET_NODE_INFORMATION: u32 = 0x00220408;
-const IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX: u32 = 0x00220448;
-const IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION: u32 = 0x00220410;
+// IOCTL constants are provided by common.rs via `use common::*`.
 
 /// GUID_DEVINTERFACE_USB_HOST_CONTROLLER = {3ABF6F2D-71C4-462A-8A92-1E6861E6AF27}
 const GUID_USB_HOST_CONTROLLER: windows::core::GUID = windows::core::GUID::from_values(
@@ -462,7 +464,6 @@ unsafe fn probe_string_descriptor_fails(
     use windows::Win32::System::IO::DeviceIoControl;
     use windows::Win32::Foundation::{GetLastError, WIN32_ERROR};
 
-    const USB_STRING_DESCRIPTOR_TYPE: u8 = 3;
     const MAX_STR: usize = 126;
     // USB_DESCRIPTOR_REQUEST layout (packed): ConnectionIndex(4) + SetupPacket(8) + Data[1]
     // Total header = 4 + 1 + 1 + 2 + 2 + 2 = 12 bytes; data payload follows.
@@ -501,7 +502,7 @@ unsafe fn probe_string_descriptor_fails(
 
     if ok.is_err() {
         let err = GetLastError();
-        return err == WIN32_ERROR(0x1F); // ERROR_GEN_FAILURE
+        return err == WIN32_ERROR(ERROR_GEN_FAILURE);
     }
 
     false

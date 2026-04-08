@@ -41,3 +41,6 @@ windows = { version = "0.58", features = [
     "Win32_Graphics_Gdi",
 ] }
 minhook = "0.6"
+
+[build-dependencies]
+winresource = "0.1"

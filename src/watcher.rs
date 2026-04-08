@@ -8,6 +8,7 @@
 
 #[path = "inject.rs"]
 mod inject;
+use inject::common::*;
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -19,42 +20,20 @@ const SERVICE_NAME: &str = "TeamsUSBFix";
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const INJECT_DELAY: Duration = Duration::from_secs(2);
 
-fn log_dir() -> std::path::PathBuf {
-    let base = std::env::var("LOCALAPPDATA")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
-    base.join("teams-usb-fix")
-}
+/// Raw `dwCurrentState` value for SERVICE_STOPPED (used inside SERVICE_STATUS_CURRENT_STATE).
+const SERVICE_STOPPED_STATE: u32 = 1;
+/// Raw `dwCurrentState` value for SERVICE_RUNNING (used inside SERVICE_STATUS_CURRENT_STATE).
+const SERVICE_RUNNING_STATE: u32 = 4;
 
 fn log(msg: &str) {
-    let dir = log_dir();
+    let dir = inject::common::log_dir();
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("teams-usb-fix.log");
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let now = timestamp();
+        let now = inject::common::timestamp();
         let _ = writeln!(f, "[{}] [watcher] {}", now, msg);
     }
     println!("[watcher] {}", msg);
-}
-
-fn timestamp() -> String {
-    #[repr(C)]
-    struct SystemTime {
-        year: u16, month: u16, _dow: u16, day: u16,
-        hour: u16, minute: u16, second: u16, millis: u16,
-    }
-    extern "system" {
-        fn GetLocalTime(st: *mut SystemTime);
-    }
-    unsafe {
-        let mut st = std::mem::zeroed::<SystemTime>();
-        GetLocalTime(&mut st);
-        format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
-            st.year, st.month, st.day,
-            st.hour, st.minute, st.second, st.millis
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,20 +209,6 @@ fn run_tray_mode() {
     use windows::core::PCWSTR;
 
     // -----------------------------------------------------------------------
-    // Helpers: encode a &str to a null-terminated Vec<u16>
-    // -----------------------------------------------------------------------
-    fn to_wide(s: &str) -> Vec<u16> {
-        s.encode_utf16().chain(std::iter::once(0)).collect()
-    }
-
-    /// Copy a &str into a fixed-size [u16; N] array (truncates if too long).
-    fn fill_wide<const N: usize>(s: &str, buf: &mut [u16; N]) {
-        for (i, c) in s.encode_utf16().take(N - 1).enumerate() {
-            buf[i] = c;
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // Set up shared state
     // -----------------------------------------------------------------------
     TRAY_RUNNING.store(true, Ordering::SeqCst);
@@ -281,15 +246,7 @@ fn run_tray_mode() {
             SW_SHOW,
         };
         use windows::core::PCWSTR;
-
-        fn to_wide(s: &str) -> Vec<u16> {
-            s.encode_utf16().chain(std::iter::once(0)).collect()
-        }
-        fn fill_wide<const N: usize>(s: &str, buf: &mut [u16; N]) {
-            for (i, c) in s.encode_utf16().take(N - 1).enumerate() {
-                buf[i] = c;
-            }
-        }
+        use crate::inject::common::{fill_wide, log_dir, to_wide};
 
         match msg {
             // Shell tray callback — right-click triggers the context menu
@@ -635,7 +592,7 @@ fn run_as_service() {
                 let handle = SERVICE_STATUS_HANDLE(raw as *mut std::ffi::c_void);
                 let status = SERVICE_STATUS {
                     dwServiceType: SERVICE_WIN32_OWN_PROCESS,
-                    dwCurrentState: SERVICE_STATUS_CURRENT_STATE(1), // SERVICE_STOPPED
+                    dwCurrentState: SERVICE_STATUS_CURRENT_STATE(SERVICE_STOPPED_STATE),
                     dwControlsAccepted: SERVICE_ACCEPT_STOP,
                     ..Default::default()
                 };
@@ -655,7 +612,7 @@ fn run_as_service() {
             // Report running
             let status = SERVICE_STATUS {
                 dwServiceType: SERVICE_WIN32_OWN_PROCESS,
-                dwCurrentState: SERVICE_STATUS_CURRENT_STATE(4), // SERVICE_RUNNING
+                dwCurrentState: SERVICE_STATUS_CURRENT_STATE(SERVICE_RUNNING_STATE),
                 dwControlsAccepted: SERVICE_ACCEPT_STOP,
                 ..Default::default()
             };

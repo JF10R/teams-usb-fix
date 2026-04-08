@@ -1,9 +1,11 @@
-# Ghidra Reverse Engineering Analysis — Teams USB Enumeration
+# Reverse Engineering Analysis: Microsoft Teams USB Audio Crash
+
+**TL;DR:** Microsoft Teams (`RtmPal.dll`) uses a custom USB enumeration path that bypasses WASAPI and calls `DeviceIoControl` directly. Devices with broken USB string descriptors trigger `ERROR_GEN_FAILURE` in the Windows USB driver layer, cascading into `AudioOutputDeviceChanged` event storms that crash Teams' audio pipeline. The `teams_usb_fix` hook intercepts `DeviceIoControl` at the `kernelbase.dll` level to synthesize valid descriptors before the error propagates.
 
 Analysis of Microsoft Teams `RtmPal.dll` (v26072.519.4556.7438) to verify the
-schiit_usb_fix DLL hook logic against Teams' actual USB device enumeration path.
+teams_usb_fix DLL hook logic against Teams' actual USB device enumeration path.
 
-## Key Finding: Teams uses custom USB enumeration, not WASAPI
+## Teams' Custom USB Enumeration Path
 
 Teams does **not** rely on the standard Windows audio stack (WASAPI/MMDevice) for
 USB topology discovery. Instead, `RtmPal.dll` contains a custom implementation
@@ -42,8 +44,8 @@ IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX (0x220448)
   → If device is a hub: recursively call ProbePorts on it
 ```
 
-This matches our hook's tracking logic — we monitor 0x220448 responses to identify
-Schiit devices by VID:PID (0x30BE:0x101C).
+This matches the hook's tracking logic — we monitor 0x220448 responses to identify
+target devices by VID:PID.
 
 ### 2. ProbePorts (0x180093aec)
 
@@ -87,34 +89,36 @@ Walks the configuration descriptor looking for USB Audio Class interface
 descriptors (bDescriptorType=0x24) within audio interfaces (bInterfaceClass=1).
 Extracts wTerminalType for input and output terminals.
 
-## Why the Schiit Fix Works
+## How Broken USB Descriptors Cause a Microsoft Teams Audio Crash
 
-The Schiit Magni Unity returns an invalid `bLength` and missing serial number
-in its USB **string descriptor** (type 3). The decompiled code shows that
+Devices with an invalid `bLength` or missing serial number in their USB **string
+descriptor** (type 3) trigger a failure cascade. The decompiled code shows that
 `ProbePorts` requests device descriptors (type 1) and configuration descriptors
 (type 2) — **not string descriptors directly**.
 
-However, there are two paths where string descriptors matter:
+However, there are two paths where broken string descriptors cause the
+Microsoft Teams audio crash:
 
 1. **Windows USB driver layer**: When Teams opens the hub handle and queries
    connection info via 0x220448, the Windows USB driver internally validates
-   string descriptors. A broken string descriptor can cause `ERROR_GEN_FAILURE`
+   string descriptors. A broken string descriptor causes `ERROR_GEN_FAILURE`
    (0x1F) to propagate up to other IOCTL calls on the same port.
 
 2. **Device enumeration via SetupDi APIs**: RtmPal.dll also imports
    `SetupDiGetDeviceRegistryPropertyW`, `SetupDiEnumDeviceInterfaces`, etc.
    These APIs read the device's serial number string descriptor. When it fails,
    the device may appear/disappear from enumeration, triggering repeated
-   `AudioOutputDeviceChanged` events.
+   `AudioOutputDeviceChanged` events that crash Teams' audio pipeline.
 
-The fix intercepts `DeviceIoControl` at the `kernelbase.dll` level, which
-catches calls from **all DLLs** loaded in the Teams process — including Windows
-system DLLs like `setupapi.dll` and `usbhub3.sys` (user-mode callbacks).
+The USB descriptor fix intercepts `DeviceIoControl` at the `kernelbase.dll`
+level, which catches calls from **all DLLs** loaded in the Teams process —
+including Windows system DLLs like `setupapi.dll` and `usbhub3.sys`
+(user-mode callbacks).
 
 ## Verification: Hook Constants Match
 
-| Constant | Fix DLL | RtmPal.dll | Match? |
-|----------|---------|------------|--------|
+| Constant | teams_usb_fix | RtmPal.dll | Match? |
+|----------|--------------|------------|--------|
 | IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION | 0x220410 | 0x220410 (3 sites) | ✓ |
 | IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX | 0x220448 | 0x220448 (1 site) | ✓ |
 | ERROR_GEN_FAILURE | 0x1F | (handled via GetLastError) | ✓ |
@@ -127,18 +131,18 @@ against the decompiled Teams binary.
 
 ## Conclusion
 
-The fix is correctly designed:
+The `teams_usb_fix` is correctly designed to resolve Microsoft Teams USB audio crashes:
 
 1. **Tracking via 0x220448** matches HandleIfHubDevice's usage — we identify the
-   Schiit by VID:PID from the same IOCTL that Teams uses for hub traversal.
+   target device by VID:PID from the same IOCTL that Teams uses for hub traversal.
 
 2. **Intercepting 0x220410 failures** for string descriptors (type 3) fixes the
-   root cause — the Schiit's broken string descriptor — without interfering with
-   Teams' device/configuration descriptor queries (types 1 and 2).
+   root cause — broken USB string descriptors — without interfering with Teams'
+   device/configuration descriptor queries (types 1 and 2).
 
-3. **The synthetic serial "SCHIIT0001"** satisfies the Windows USB driver's
-   expectation of a valid string descriptor, preventing ERROR_GEN_FAILURE from
-   cascading into SetupDi enumeration failures and AudioOutputDeviceChanged storms.
+3. **Synthesizing a valid serial string** satisfies the Windows USB driver's
+   expectation of a valid string descriptor, preventing `ERROR_GEN_FAILURE` from
+   cascading into SetupDi enumeration failures and `AudioOutputDeviceChanged` storms.
 
 4. **Process-wide hook scope** is necessary because the `DeviceIoControl` calls
    originate from Windows system DLLs loaded into Teams' address space, not from
@@ -148,9 +152,11 @@ The fix is correctly designed:
 gracefully — it logs the error and skips the port. The actual crash path is
 through the **SetupDi / Windows USB driver layer**, where the broken string
 descriptor causes the device to flicker in/out of enumeration, triggering
-`AudioOutputDeviceChanged` event storms in Teams' audio pipeline. The fix
-addresses this at the correct level — preventing the cascade before it reaches
-Teams' event handling.
+`AudioOutputDeviceChanged` event storms in Teams' audio pipeline. The USB
+descriptor fix addresses this at the correct level — preventing the cascade
+before it reaches Teams' event handling.
+
+Logs are written to `%LOCALAPPDATA%\teams-usb-fix\teams-usb-fix.log`.
 
 ## Files Analyzed
 
