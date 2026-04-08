@@ -209,6 +209,7 @@ static TRAY_RUNNING: AtomicBool = AtomicBool::new(true);
 /// Shared WatcherState for the Status menu item.
 static TRAY_STATE: Mutex<Option<Arc<Mutex<WatcherState>>>> = Mutex::new(None);
 
+#[allow(clippy::field_reassign_with_default)]
 fn run_tray_mode() {
     // Outer-scope imports: only what the outer unsafe block and wndproc
     // signature use.  tray_wndproc has its own local use statements for the
@@ -257,6 +258,7 @@ fn run_tray_mode() {
     // -----------------------------------------------------------------------
     let class_name = to_wide("TeamsUSBFixTrayWnd");
 
+    #[allow(clippy::field_reassign_with_default)]
     unsafe extern "system" fn tray_wndproc(
         hwnd: HWND,
         msg: u32,
@@ -319,7 +321,7 @@ fn run_tray_mode() {
 
             // Menu item chosen
             WM_COMMAND => {
-                let item_id = (wparam.0 & 0xFFFF) as usize;
+                let item_id = wparam.0 & 0xFFFF;
                 match item_id {
                     IDM_STATUS => {
                         // Build status string from shared state

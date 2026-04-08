@@ -144,7 +144,7 @@ pub fn inject_dll(pid: u32, dll_path: &str) -> Result<(), String> {
             process,
             None,
             0,
-            Some(mem::transmute(load_library_fn)),
+            Some(load_library_fn),
             Some(remote_mem),
             0,
             None,
@@ -424,7 +424,7 @@ unsafe fn check_port(
     let base = buf.as_ptr();
     let vid: u16 = std::ptr::read_unaligned(base.add(12) as *const u16);
     let pid: u16 = std::ptr::read_unaligned(base.add(14) as *const u16);
-    let device_is_hub: u8 = std::ptr::read_unaligned(base.add(24) as *const u8);
+    let device_is_hub: u8 = std::ptr::read_unaligned(base.add(24));
     let connection_status: i32 = std::ptr::read_unaligned(base.add(31) as *const i32);
 
     // Skip if no device or if this port is itself a hub

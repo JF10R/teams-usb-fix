@@ -177,7 +177,7 @@ unsafe fn query_iproduct_index(
         connection_index: port,
         bm_request: 0x80,
         b_request: 0x06,
-        w_value: ((USB_DEVICE_DESCRIPTOR_TYPE as u16) << 8) | 0x00,
+        w_value: (USB_DEVICE_DESCRIPTOR_TYPE as u16) << 8,
         w_index: 0,
         w_length: DESC_LEN as u16,
     };
@@ -267,7 +267,7 @@ unsafe fn query_string_descriptor(
     }
 
     let str_bytes = desc_len - 2;
-    if str_bytes == 0 || str_bytes % 2 != 0 {
+    if str_bytes == 0 || !str_bytes.is_multiple_of(2) {
         return None;
     }
 
@@ -414,7 +414,7 @@ fn install_hook() -> Result<(), String> {
         )
         .map_err(|e| format!("create_hook: {:?}", e))?;
 
-        ORIGINAL_DEVICE_IO_CONTROL = Some(std::mem::transmute(trampoline));
+        ORIGINAL_DEVICE_IO_CONTROL = Some(std::mem::transmute::<*mut c_void, DeviceIoControlFn>(trampoline));
 
         minhook::MinHook::enable_all_hooks()
             .map_err(|e| format!("enable_all_hooks: {:?}", e))?;
@@ -429,7 +429,7 @@ fn remove_hook() {
     if HOOK_ACTIVE.load(Ordering::SeqCst) {
         unsafe {
             let _ = minhook::MinHook::disable_all_hooks();
-            let _ = minhook::MinHook::uninitialize();
+            minhook::MinHook::uninitialize();
         }
         HOOK_ACTIVE.store(false, Ordering::SeqCst);
         log("Hook removed".to_string());
