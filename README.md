@@ -209,7 +209,7 @@ For the full reverse engineering analysis of how Teams enumerates USB devices, s
 Yes. The hook only modifies `DeviceIoControl` behavior within the Teams process. It returns valid USB string descriptors for devices that fail to provide them. No data is written to disk other than the log file. The full source code is available for inspection.
 
 **Q: Will antivirus software flag this?**
-Some antivirus products flag DLL injection tools by heuristic, regardless of intent. The tool is fully open source — build it yourself and verify the behavior. If your AV flags it, add an exception for the directory.
+Yes — expect ~7/72 detections on [VirusTotal](https://www.virustotal.com/). All detections are **ML/heuristic** (not signature-based) and triggered by the `CreateRemoteThread` + `VirtualAllocEx` + `LoadLibraryW` injection pattern, which is identical to how malware injects DLLs. This is inherent to any DLL injection tool and cannot be eliminated through code changes — only **code signing** with a trusted certificate (~$200/yr) would suppress these heuristics. The tool is fully open source — build it yourself and verify the behavior. If your AV blocks it, add an exception for the directory.
 
 **Q: Does this work with apps other than Teams?**
 The injector targets `ms-teams.exe` specifically. The DLL itself is generic and could be injected into other processes, but Teams is the only known app with this issue (because it uses custom USB enumeration instead of WASAPI).
