@@ -1,0 +1,43 @@
+[package]
+name = "teams-usb-fix"
+version = "1.0.0"
+edition = "2021"
+description = "Fix for USB audio devices with broken string descriptors that crash Microsoft Teams"
+license = "MIT"
+repository = "https://github.com/jf10r/teams-usb-fix"
+authors = ["Jeff Noel"]
+readme = "README.md"
+keywords = ["usb", "teams", "audio", "fix", "windows"]
+categories = ["os::windows-apis"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "injector"
+path = "src/injector.rs"
+
+[[bin]]
+name = "teams-usb-fix-service"
+path = "src/watcher.rs"
+
+[dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Services",
+    "Win32_System_Console",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Usb",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi",
+] }
+minhook = "0.6"
