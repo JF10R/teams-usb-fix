@@ -221,10 +221,11 @@ Unlikely. The hook targets `DeviceIoControl` in `kernelbase.dll` — a stable Wi
 No. The hook only activates when a `DeviceIoControl` call **fails** with `ERROR_GEN_FAILURE`. USB devices with valid descriptors pass through without modification.
 
 **Q: What USB devices are known to be affected?**
-Any USB audio device whose string descriptor requests fail with `ERROR_GEN_FAILURE`. The log file identifies your device by VID, PID, and product name.
+Any USB device whose string descriptor requests fail with `ERROR_GEN_FAILURE`. The log file identifies your device by VID, PID, and product name.
 
 Known affected devices:
-- **Schiit Magni Unity** (VID:`30BE` PID:`101C`)
+- **Schiit Magni Unity** (VID:`30BE` PID:`101C`) — USB audio DAC/amp
+- **ASUS AURA LED Controller** (VID:`0B05` PID:`1872`) — RGB lighting controller found on ASUS motherboards (ROG Strix X470-F and others). The controller's string descriptor has been broken since manufacturing; ASUS has never issued a [firmware fix](https://rog-forum.asus.com/t5/amd-500-400-series/bios-is-updating-led-firmware/td-p/766394). Not an audio device, but its broken descriptor can still trigger Teams' enumeration bug.
 
 *If you discover another affected device, please [open an issue](https://github.com/jf10r/teams-usb-fix/issues) with the VID:PID from the log file.*
 
